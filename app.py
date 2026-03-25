@@ -4,7 +4,7 @@ import os
 
 # --- SECURE CONFIG ---
 ADMIN_PASSWORD = "your_secret_password"  # Change this!
-TEAM_MEMBERS = ["Alice", "Bob", "Charlie", "David", "Eve", "Frank"]
+TEAM_MEMBERS = ["Somma", "Haris", "Anosh", "Ifrah", "Nadia", "Hassaan", "Faizan"]
 LEAVE_DB = "leave_data.csv"
 
 # --- DATA PERSISTENCE ---
