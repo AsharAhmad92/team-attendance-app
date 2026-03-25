@@ -3,8 +3,8 @@ import pandas as pd
 import os
 
 # --- CONFIG ---
-ADMIN_PASSWORD = "your_secret_password" 
-TEAM_MEMBERS = ["Anosh", "Haris", "Somma", "Ifrah", "Nadia", "Hassaan", "Faizan"]
+ADMIN_PASSWORD = "abc123" 
+TEAM_MEMBERS = ["Haris", "Somma", "Anosh", "Ifrah", "Nadia", "Hassan", "Faizan"]
 LEAVE_DB = "leave_data.csv"
 
 # --- SELF-HEALING DATA LOADER ---
@@ -32,7 +32,7 @@ access_mode = st.sidebar.selectbox("Select Mode", ["Team Member", "Manager/Admin
 authenticated = False
 if access_mode == "Manager/Admin":
     pwd = st.sidebar.text_input("Enter Admin Password", type="password")
-    if pwd == abc123
+    if pwd == ADMIN_PASSWORD:
         authenticated = True
     elif pwd != "":
         st.sidebar.error("Incorrect Password")
