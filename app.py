@@ -1,68 +1,74 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+import os
 
-# --- CONFIGURATION ---
-TEAM_MEMBERS = ["Somma", "Haris", "Nadia", "Ifrah", "Anosh", "Hassaan", "Faizan"]
-MIN_STAFF_REQUIRED = 3
-DB_FILE = "leave_data.csv"
+# --- SECURE CONFIG ---
+ADMIN_PASSWORD = "your_secret_password"  # Change this!
+TEAM_MEMBERS = ["Alice", "Bob", "Charlie", "David", "Eve", "Frank"]
+LEAVE_DB = "leave_data.csv"
 
-# Load or create the database
-try:
-    df = pd.read_csv(DB_FILE)
-except FileNotFoundError:
-    df = pd.DataFrame(columns=["Name", "Date", "Type"])
+# --- DATA PERSISTENCE ---
+def load_data():
+    if os.path.exists(LEAVE_DB):
+        return pd.read_csv(LEAVE_DB)
+    return pd.DataFrame(columns=["Name", "Date", "Status"])
 
-st.set_page_config(page_title="Team Coverage Tracker", layout="wide")
-st.title("📅 Team Leave & Coverage Tool")
+df_leave = load_data()
 
-# --- SIDEBAR: LOG NEW LEAVE ---
-st.sidebar.header("Log/Request Leave")
-with st.sidebar.form("leave_form"):
-    user = st.selectbox("Who are you?", TEAM_MEMBERS)
-    leave_date = st.date_input("Select Date")
-    submit = st.form_submit_button("Submit Leave")
+# --- SIDEBAR AUTHENTICATION ---
+st.sidebar.title("🔐 Access Control")
+access_mode = st.sidebar.selectbox("Select Mode", ["Team Member", "Manager/Admin"])
 
-    if submit:
-        new_data = pd.DataFrame([[user, str(leave_date), "Planned"]], columns=["Name", "Date", "Type"])
-        df = pd.concat([df, new_data], ignore_index=True).drop_duplicates()
-        df.to_csv(DB_FILE, index=False)
-        st.success(f"Leave logged for {user} on {leave_date}")
+authenticated = False
+if access_mode == "Manager/Admin":
+    pwd = st.sidebar.text_input("Enter Admin Password", type="password")
+    if pwd == ADMIN_PASSWORD:
+        authenticated = True
+    elif pwd != "":
+        st.sidebar.error("Incorrect Password")
 
-# --- MAIN PANEL: COVERAGE CHECK ---
-st.subheader("Monthly Coverage Overview")
-selected_month = st.date_input("Check coverage for date:", datetime.now())
-day_str = str(selected_month)
+# --- APP LAYOUT ---
+st.title("🛡️ Content Team Leave Manager")
 
-# Filter data for the selected day
-absent_today = df[df['Date'] == day_str]['Name'].tolist()
-present_count = len(TEAM_MEMBERS) - len(absent_today)
-
-# Visual Indicators
-col1, col2 = st.columns(2)
-with col1:
-    st.metric("Team Members Present", f"{present_count} / {len(TEAM_MEMBERS)}")
+# 1. MANAGER VIEW (Conditional)
+if access_mode == "Manager/Admin" and authenticated:
+    st.header("🔑 Manager Dashboard")
+    pending = df_leave[df_leave["Status"] == "Pending Approval"]
     
-with col2:
-    if present_count < MIN_STAFF_REQUIRED:
-        st.error("⚠️ CRITICAL: Understaffed! Swaps required.")
+    if not pending.empty:
+        for idx, row in pending.iterrows():
+            c1, c2, c3 = st.columns([3, 1, 1])
+            c1.write(f"**{row['Name']}** requested **{row['Date']}**")
+            if c2.button("Approve ✅", key=f"a_{idx}"):
+                df_leave.at[idx, "Status"] = "Approved"
+                df_leave.to_csv(LEAVE_DB, index=False)
+                st.rerun()
+            if c3.button("Deny ❌", key=f"d_{idx}"):
+                df_leave = df_leave.drop(idx)
+                df_leave.to_csv(LEAVE_DB, index=False)
+                st.rerun()
     else:
-        st.success("✅ Coverage is sufficient.")
+        st.info("No pending requests to review.")
 
-# Show list of absences
-if absent_today:
-    st.write(f"**Absent on {day_str}:** {', '.join(absent_today)}")
-else:
-    st.write(f"**Everyone is present on {day_str}!**")
+# 2. TEAM MEMBER VIEW
+elif access_mode == "Team Member":
+    st.header("📝 Request Leave")
+    with st.form("leave_entry"):
+        name = st.selectbox("Your Name", TEAM_MEMBERS)
+        date = st.date_input("Choose Date")
+        if st.form_submit_button("Submit Request"):
+            new_row = pd.DataFrame([[name, str(date), "Pending Approval"]], 
+                                  columns=["Name", "Date", "Status"])
+            df_leave = pd.concat([df_leave, new_row]).drop_duplicates()
+            df_leave.to_csv(LEAVE_DB, index=False)
+            st.success("Sent for approval!")
 
-# --- SWAP BOARD ---
+# 3. PUBLIC CALENDAR (Always Visible)
 st.divider()
-st.subheader("🔄 Swap Marketplace")
-st.info("Need to swap? Post a message here so a teammate can 'trade' dates with you.")
-swap_msg = st.text_input("Post a swap request (e.g., 'Haris: Trading Friday for next Monday')")
-if st.button("Post Request"):
-    st.toast("Request posted to the team!") # In a full app, you'd save this to a 'swaps.csv'
-
-# --- DATA TABLE ---
-with st.expander("View Full Leave Table"):
-    st.dataframe(df, use_container_width=True)
+st.header("📅 Confirmed Team Schedule")
+# Show only approved leaves so the team knows who is ACTUALLY out.
+confirmed = df_leave[df_leave["Status"] == "Approved"]
+if not confirmed.empty:
+    st.dataframe(confirmed.sort_values("Date"), use_container_width=True)
+else:
+    st.write("No leaves approved for the current period.")
