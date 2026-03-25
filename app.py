@@ -33,7 +33,7 @@ if access_mode == "Manager/Admin":
 st.title("🛡️ QA & Publishing Team Leave Manager")
 
 # --- NEW: LIVE AVAILABILITY COUNTER ---
-st.header("📊 Real-Time Coverage Check")
+st.header("📊 Real-Time Attendance Check")
 check_date = st.date_input("Select a date to check availability:", datetime.now())
 date_str = str(check_date)
 
@@ -48,7 +48,7 @@ with c2:
     if present_count < MIN_STAFF_REQUIRED:
         st.error(f"⚠️ UNDERSTAFFED! Min required: {MIN_STAFF_REQUIRED}")
     else:
-        st.success("✅ Coverage is sufficient.")
+        st.success("✅ Sufficient Team Members Available.")
 
 if absent_list:
     st.info(f"Confirmed Absent: {', '.join(absent_list)}")
