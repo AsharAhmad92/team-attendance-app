@@ -37,7 +37,7 @@ if access_mode == "Manager/Admin":
     elif pwd != "":
         st.sidebar.error("Incorrect Password")
 
-st.title("🛡️ Content Team Leave Manager")
+st.title("🛡️ QA & Publishing Team Leave Manager")
 
 # --- 1. MANAGER VIEW ---
 if access_mode == "Manager/Admin" and authenticated:
