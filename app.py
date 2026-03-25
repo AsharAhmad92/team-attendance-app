@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 
 # --- CONFIGURATION ---
-TEAM_MEMBERS = ["Alice", "Bob", "Charlie", "David", "Eve", "Frank"]
+TEAM_MEMBERS = ["Somma", "Haris", "Nadia", "Ifrah", "Anosh", "Hassaan", "Faizan"]
 MIN_STAFF_REQUIRED = 3
 DB_FILE = "leave_data.csv"
 
