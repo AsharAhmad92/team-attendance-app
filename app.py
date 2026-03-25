@@ -32,7 +32,7 @@ access_mode = st.sidebar.selectbox("Select Mode", ["Team Member", "Manager/Admin
 authenticated = False
 if access_mode == "Manager/Admin":
     pwd = st.sidebar.text_input("Enter Admin Password", type="password")
-    if pwd == ADMIN_PASSWORD:abc123
+    if pwd == abc123
         authenticated = True
     elif pwd != "":
         st.sidebar.error("Incorrect Password")
