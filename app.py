@@ -4,7 +4,7 @@ import os
 
 # --- CONFIG ---
 ADMIN_PASSWORD = "your_secret_password" 
-TEAM_MEMBERS = ["Alice", "Bob", "Charlie", "David", "Eve", "Frank"]
+TEAM_MEMBERS = ["Anosh", "Haris", "Somma", "Ifrah", "Nadia", "Hassaan", "Faizan"]
 LEAVE_DB = "leave_data.csv"
 
 # --- SELF-HEALING DATA LOADER ---
