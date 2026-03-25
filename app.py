@@ -59,7 +59,7 @@ else:
 st.divider()
 st.subheader("🔄 Swap Marketplace")
 st.info("Need to swap? Post a message here so a teammate can 'trade' dates with you.")
-swap_msg = st.text_input("Post a swap request (e.g., 'Alice: Trading Friday for next Monday')")
+swap_msg = st.text_input("Post a swap request (e.g., 'Haris: Trading Friday for next Monday')")
 if st.button("Post Request"):
     st.toast("Request posted to the team!") # In a full app, you'd save this to a 'swaps.csv'
 
