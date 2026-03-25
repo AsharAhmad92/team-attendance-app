@@ -4,8 +4,8 @@ import os
 from datetime import datetime
 
 # --- CONFIG ---
-ADMIN_PASSWORD = "your_secret_password" 
-TEAM_MEMBERS = ["Alice", "Bob", "Charlie", "David", "Eve", "Frank"]
+ADMIN_PASSWORD = "abc123" 
+TEAM_MEMBERS = ["Haris", "Anosh", "Hassaan", "Somma", "Ifrah", "Nadia", "Faizan"]
 MIN_STAFF_REQUIRED = 3
 LEAVE_DB = "leave_data.csv"
 SWAP_DB = "swap_requests.csv"
@@ -30,7 +30,7 @@ if access_mode == "Manager/Admin":
     pwd = st.sidebar.text_input("Enter Admin Password", type="password")
     if pwd == ADMIN_PASSWORD: authenticated = True
 
-st.title("🛡️ Team Leave & Coverage Manager")
+st.title("🛡️ QA & Publishing Team Leave Manager")
 
 # --- NEW: LIVE AVAILABILITY COUNTER ---
 st.header("📊 Real-Time Coverage Check")
