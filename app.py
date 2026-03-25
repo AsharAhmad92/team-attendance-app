@@ -10,10 +10,13 @@ LEAVE_DB = "leave_data.csv"
 # --- DATA PERSISTENCE ---
 def load_data():
     if os.path.exists(LEAVE_DB):
-        return pd.read_csv(LEAVE_DB)
+        df = pd.read_csv(LEAVE_DB)
+        # SAFETY CHECK: If 'Status' column is missing, add it with 'Approved' as default
+        if "Status" not in df.columns:
+            df["Status"] = "Approved" 
+            df.to_csv(LEAVE_DB, index=False)
+        return df
     return pd.DataFrame(columns=["Name", "Date", "Status"])
-
-df_leave = load_data()
 
 # --- SIDEBAR AUTHENTICATION ---
 st.sidebar.title("🔐 Access Control")
