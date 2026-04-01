@@ -9,15 +9,13 @@ TEAM_MEMBERS = ["Haris", "Anosh", "Hassaan", "Somma", "Ifrah", "Nadia", "Faizan"
 MIN_STAFF_REQUIRED = 3
 
 # 🚨 PASTE YOUR LINKS HERE
-# 1. The "Publish to Web" CSV link (for READING)
 SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR7iiQmtnEj3GVbT1IhajMd3bndS1S9_HTrCn1cwqF9ZefnUwnvSX3WyBRSEdSGwtUTpqy1TRpTe3n8/pub?output=csv"
-# 2. The Apps Script Web App URL (for WRITING)
-SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzQJeisM-PeZmeJqyArPMiVj8fjqX39DtlIpBCd6jtXHZePgXcCezPCn6bArVoRC2Q/exec"
+SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyNdpfKKPcHtGKLddWl1GvaFwLgw09ujDZrRBoVWhm2h8Us9cpEoQ7a3QQ7x9-QJP4/exec"
 
 st.set_page_config(page_title="QA & Publishing Leave Manager", layout="wide")
 
 # --- DATA LOADER ---
-@st.cache_data(ttl=5) # Refresh every 5 seconds for "live" feel
+@st.cache_data(ttl=5)
 def load_data():
     try:
         return pd.read_csv(SHEET_CSV_URL)
@@ -44,30 +42,62 @@ if access_mode == "Team Member":
         u_date = st.date_input("Date Requested", datetime.now())
         
         if st.form_submit_button("Submit to Sheet"):
-            # This is the "Magic" part that sends data to Google Sheets
             payload = {
                 "name": u_name,
                 "date": str(u_date),
-                "status": "Pending Approval"
+                "status": "Pending Approval",
+                "action": "add"
             }
             try:
                 response = requests.post(SCRIPT_URL, json=payload)
                 if response.status_code == 200:
                     st.success(f"✅ Success! Request for {u_name} on {u_date} has been logged.")
                     st.balloons()
+                    st.cache_data.clear() # Clear cache to show new data
                 else:
-                    st.error("Submission failed. Check your Script URL.")
+                    st.error("Submission failed.")
             except Exception as e:
                 st.error(f"Error: {e}")
 
-# --- 2. ATTENDANCE CHECK & CALENDAR (Manager & Team) ---
+# --- 2. MANAGER APPROVAL VIEW ---
+if authenticated:
+    st.divider()
+    st.header("🔑 Manager Approval Queue")
+    
+    pending_df = df_leave[df_leave["Status"] == "Pending Approval"]
+    
+    if not pending_df.empty:
+        for index, row in pending_df.iterrows():
+            col_name, col_date, col_btn = st.columns([2, 2, 1])
+            col_name.write(f"👤 {row['Name']}")
+            col_date.write(f"📅 {row['Date']}")
+            
+            if col_btn.button("Approve ✅", key=f"btn_{index}"):
+                approval_payload = {
+                    "name": row['Name'],
+                    "date": row['Date'],
+                    "action": "approve"
+                }
+                with st.spinner("Updating Sheet..."):
+                    res = requests.post(SCRIPT_URL, json=approval_payload)
+                    if res.status_code == 200:
+                        st.success(f"Approved {row['Name']}")
+                        st.cache_data.clear() # Force refresh
+                        st.rerun()
+                    else:
+                        st.error("Approval failed.")
+    else:
+        st.info("No pending requests to approve.")
+
+# --- 3. ATTENDANCE CHECK & CALENDAR ---
 st.divider()
 st.header("📊 Real-Time Coverage")
 
-# Date picker for checking specific days
 check_date = st.date_input("Check staffing for:", datetime.now())
 date_str = str(check_date)
 
+# Fix for potential data type mismatch in CSV dates
+df_leave['Date'] = df_leave['Date'].astype(str)
 absent_list = df_leave[(df_leave["Date"] == date_str) & (df_leave["Status"] == "Approved")]["Name"].tolist()
 present_count = len(TEAM_MEMBERS) - len(absent_list)
 
@@ -78,17 +108,9 @@ if present_count < MIN_STAFF_REQUIRED:
 else:
     col2.success("✅ Staffing is sufficient.")
 
-# Show the confirmed leave list
 st.subheader("📅 Confirmed Approved Leaves")
 approved_df = df_leave[df_leave["Status"] == "Approved"]
 if not approved_df.empty:
     st.dataframe(approved_df.sort_values("Date"), use_container_width=True)
 else:
     st.info("No approved leaves found.")
-
-# Manager-only raw data view
-if authenticated:
-    st.divider()
-    st.subheader("🔑 Manager Audit (All Data)")
-    st.write("Edit the Google Sheet directly to Approve/Deny requests.")
-    st.dataframe(df_leave)
