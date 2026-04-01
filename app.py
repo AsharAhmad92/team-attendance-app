@@ -40,7 +40,7 @@ with tab1:
     with st.form("request_form", clear_on_submit=True):
         u_name = st.selectbox("Your Name", TEAM_MEMBERS)
         u_date = st.date_input("Date of Leave", datetime.now())
-        if st.form_submit_button("Submit and Approve"):
+        if st.form_submit_button("Submit"):
             payload = {"name": u_name, "date": str(u_date), "action": "add"}
             with st.spinner("Updating Calendar..."):
                 requests.post(SCRIPT_URL, json=payload)
