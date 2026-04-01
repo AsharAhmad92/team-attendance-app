@@ -1,41 +1,46 @@
 import streamlit as st
 import pandas as pd
-import requests
 from datetime import datetime
 
 # --- CONFIG ---
-ADMIN_PASSWORD = "abc123"
+ADMIN_PASSWORD = "abc123" 
 TEAM_MEMBERS = ["Haris", "Anosh", "Hassaan", "Somma", "Ifrah", "Nadia", "Faizan"]
 MIN_STAFF_REQUIRED = 3
 
-# REPLACE THESE WITH YOUR ACTUAL LINKS
-# To get the CSV_URL: Take your sheet link and replace everything after /edit... with /export?format=csv&gid=0
-CSV_URL = "https://docs.google.com/spreadsheets/d/1Yk_QWEfgdGhQFQI3CKjTUHljRWj4ZScvBlBBVakOok8/edit/export?format=csv&gid=0"
-SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzj1IO4lhK58iiKCRDkAEUa3ByzRJV2TO8oPNnhy_ubec793qAJDTXFryVoBnUnJteb/exec"
+# 🚨 PASTE YOUR PUBLISHED CSV LINK HERE
+SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR7iiQmtnEj3GVbT1IhajMd3bndS1S9_HTrCn1cwqF9ZefnUwnvSX3WyBRSEdSGwtUTpqy1TRpTe3n8/pub?output=csv"
 
-st.set_page_config(page_title="Team Leave Manager", layout="wide")
+st.set_page_config(page_title="QA & Publishing Leave Manager", layout="wide")
 
 # --- DATA LOADER ---
-def load_public_data():
+@st.cache_data(ttl=10) # Refreshes every 10 seconds
+def load_data():
     try:
-        return pd.read_csv(CSV_URL)
-    except:
+        # Pulls live data from the published Google Sheet
+        return pd.read_csv(SHEET_CSV_URL)
+    except Exception as e:
+        st.error("Cannot connect to Google Sheets. Check if 'Publish to Web' is active.")
         return pd.DataFrame(columns=["Name", "Date", "Status"])
 
-df_leave = load_public_data()
+df_leave = load_data()
 
 # --- SIDEBAR ---
 st.sidebar.title("🔐 Access Control")
 access_mode = st.sidebar.selectbox("Select Mode", ["Team Member", "Manager/Admin"])
-authenticated = (access_mode == "Manager/Admin" and st.sidebar.text_input("Password", type="password") == ADMIN_PASSWORD)
+authenticated = False
+if access_mode == "Manager/Admin":
+    pwd = st.sidebar.text_input("Enter Admin Password", type="password")
+    if pwd == ADMIN_PASSWORD:
+        authenticated = True
 
 st.title("🛡️ QA & Publishing Team Leave Manager")
 
 # --- ATTENDANCE CHECK ---
 st.header("📊 Real-Time Attendance Check")
-check_date = st.date_input("Select Date", datetime.now())
+check_date = st.date_input("Check date:", datetime.now())
 date_str = str(check_date)
 
+# Filters
 absent_list = df_leave[(df_leave["Date"] == date_str) & (df_leave["Status"] == "Approved")]["Name"].tolist()
 present_count = len(TEAM_MEMBERS) - len(absent_list)
 
@@ -44,39 +49,45 @@ with c1:
     st.metric("Staff Present", f"{present_count} / {len(TEAM_MEMBERS)}")
 with c2:
     if present_count < MIN_STAFF_REQUIRED:
-        st.error(f"⚠️ UNDERSTAFFED!")
+        st.error(f"⚠️ UNDERSTAFFED! Min: {MIN_STAFF_REQUIRED}")
     else:
-        st.success("✅ Sufficient Staff.")
+        st.success("✅ Staffing OK.")
 
 st.divider()
 
-# --- LOGIC: TEAM MEMBER REQUEST ---
+# --- TEAM MEMBER VIEW ---
 if access_mode == "Team Member":
-    with st.form("leave_entry"):
-        u_name = st.selectbox("Your Name", TEAM_MEMBERS)
-        u_date = st.date_input("Date Requested")
-        if st.form_submit_button("Submit Request"):
-            # Send data to the Google Apps Script
-            payload = [u_name, str(u_date), "Pending Approval"]
-            requests.post(f"{SCRIPT_URL}?sheet=Leaves", json=payload)
-            st.success("Sent to Google Sheets!")
-            st.rerun()
-
-# --- LOGIC: MANAGER APPROVAL ---
-elif authenticated:
-    st.header("🔑 Manager Approval Queue")
-    pending = df_leave[df_leave["Status"] == "Pending Approval"]
+    st.subheader("📝 Submit New Request")
+    st.info("Note: Requests are saved to the Google Sheet. Use the link below to add your entry.")
     
+    # Since we aren't using a JSON key to write, we provide a direct link to the sheet
+    sheet_edit_url = SHEET_CSV_URL.split("/pub")[0] # Trims to the main sheet link
+    st.markdown(f"[👉 Click here to open the Google Sheet and add your request]({sheet_edit_url})")
+    
+    st.write("---")
+    st.write("### Current Pending Requests")
+    pending = df_leave[df_leave["Status"] == "Pending Approval"]
     if not pending.empty:
-        for idx, row in pending.iterrows():
-            if st.button(f"Approve {row['Name']} for {row['Date']}"):
-                # Note: For 'Approving' via Public URL, it is easiest to 
-                # manually change the status to "Approved" in the Google Sheet itself.
-                st.info("Please open the Google Sheet and change 'Pending' to 'Approved' for this row.")
+        st.table(pending)
     else:
-        st.info("No pending requests.")
+        st.write("No pending requests.")
 
-# --- VIEW CALENDAR ---
+# --- MANAGER VIEW ---
+elif authenticated:
+    st.header("🔑 Manager Approval Dashboard")
+    st.write("To approve or deny, please edit the 'Status' column directly in Google Sheets.")
+    
+    pending = df_leave[df_leave["Status"] == "Pending Approval"]
+    if not pending.empty:
+        st.dataframe(pending, use_container_width=True)
+    else:
+        st.success("All requests handled!")
+
+# --- PUBLIC CALENDAR ---
 st.divider()
 st.subheader("📅 Approved Team Leave List")
-st.dataframe(df_leave[df_leave["Status"] == "Approved"])
+approved = df_leave[df_leave["Status"] == "Approved"]
+if not approved.empty:
+    st.dataframe(approved.sort_values("Date"), use_container_width=True)
+else:
+    st.info("No approved leaves found.")
