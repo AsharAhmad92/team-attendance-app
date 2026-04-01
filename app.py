@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
+import time
 from datetime import datetime
 
 # --- CONFIG ---
@@ -8,21 +9,28 @@ ADMIN_PASSWORD = "abc123"
 TEAM_MEMBERS = ["Haris", "Anosh", "Hassaan", "Somma", "Ifrah", "Nadia", "Faizan"]
 MIN_STAFF_REQUIRED = 3
 
-# 🚨 PASTE YOUR UPDATED LINKS HERE
+# 🚨 LINKS
 SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR7iiQmtnEj3GVbT1IhajMd3bndS1S9_HTrCn1cwqF9ZefnUwnvSX3WyBRSEdSGwtUTpqy1TRpTe3n8/pub?output=csv"
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz11sgcmRRm55GWQYxU26BTkORTgeegLguJeNEsBgWu9ZNLAc9DUlsqhFg0s9MTr1C2/exec"
 
 st.set_page_config(page_title="QA & Publishing Leave Manager", layout="wide")
 
 # --- DATA LOADER ---
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=2) # Very low TTL to prevent ghost data
 def load_data():
     try:
-        return pd.read_csv(SHEET_CSV_URL)
+        # Cache busting: Adds a unique number to the URL so Google sends fresh data
+        sep = "&" if "?" in SHEET_CSV_URL else "?"
+        fresh_url = f"{SHEET_CSV_URL}{sep}cache_buster={time.time()}"
+        return pd.read_csv(fresh_url)
     except:
         return pd.DataFrame(columns=["Name", "Date", "Status"])
 
+# Load data at start
 df_leave = load_data()
+# Ensure Date is always a string for matching logic
+if not df_leave.empty:
+    df_leave['Date'] = df_leave['Date'].astype(str)
 
 st.title("🛡️ QA & Publishing Team Leave Manager")
 
@@ -47,13 +55,13 @@ if access_mode == "Team Member":
                 payload = {"name": u_name, "date": str(u_date), "action": "add"}
                 requests.post(SCRIPT_URL, json=payload)
                 st.success("Sent to Manager!")
+                time.sleep(1.5) # Wait for Google to write
                 st.cache_data.clear()
+                st.rerun()
 
     with tab2:
         st.header("Swap Your Approved Leave")
-        st.info("To swap, select an approved leave you ALREADY have and the new date you want instead.")
-        
-        # Only show leaves that are actually approved for the user
+        st.info("To swap, select an approved leave you ALREADY have.")
         my_name = st.selectbox("Who are you?", TEAM_MEMBERS, key="swap_name")
         my_approved = df_leave[(df_leave["Name"] == my_name) & (df_leave["Status"] == "Approved")]
         
@@ -62,7 +70,6 @@ if access_mode == "Team Member":
                 old_date = st.selectbox("Select Leave to Give Up", my_approved["Date"].tolist())
                 new_date = st.date_input("Select New Date You Want")
                 if st.form_submit_button("Request Swap"):
-                    # For a direct swap through tool, we send to script to replace row
                     payload = {
                         "name": my_name,
                         "old_date": str(old_date),
@@ -70,10 +77,12 @@ if access_mode == "Team Member":
                         "action": "swap"
                     }
                     requests.post(SCRIPT_URL, json=payload)
-                    st.success("Swap processed! Your calendar has been updated.")
+                    st.success("Swap processed!")
+                    time.sleep(2) # Swaps take longer to process in script
                     st.cache_data.clear()
+                    st.rerun()
         else:
-            st.warning("You don't have any approved leaves to swap yet.")
+            st.warning("No approved leaves to swap.")
 
 # --- 2. MANAGER APPROVAL VIEW ---
 if authenticated:
@@ -88,10 +97,11 @@ if authenticated:
             c2.write(f"📅 {row['Date']}")
             if c3.button("Approve ✅", key=f"app_{index}"):
                 payload = {"name": row['Name'], "date": row['Date'], "action": "approve"}
-                requests.post(SCRIPT_URL, json=payload)
-                st.success(f"Approved {row['Name']}")
-                st.cache_data.clear()
-                st.rerun()
+                with st.spinner("Writing to Google Sheets..."):
+                    requests.post(SCRIPT_URL, json=payload)
+                    time.sleep(2) # CRITICAL: Give Google time to save before reload
+                    st.cache_data.clear()
+                    st.rerun()
     else:
         st.info("No pending requests.")
 
@@ -102,7 +112,6 @@ st.header("📊 Real-Time Coverage")
 check_date = st.date_input("Check staffing for:", datetime.now(), key="check_date")
 date_str = str(check_date)
 
-df_leave['Date'] = df_leave['Date'].astype(str)
 absent_list = df_leave[(df_leave["Date"] == date_str) & (df_leave["Status"] == "Approved")]["Name"].tolist()
 present_count = len(TEAM_MEMBERS) - len(absent_list)
 
