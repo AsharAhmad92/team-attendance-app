@@ -1,26 +1,27 @@
 import streamlit as st
 import pandas as pd
-import os
 from datetime import datetime
+from streamlit_gsheets import GSheetsConnection
 
 # --- CONFIG ---
 ADMIN_PASSWORD = "abc123" 
 TEAM_MEMBERS = ["Haris", "Anosh", "Hassaan", "Somma", "Ifrah", "Nadia", "Faizan"]
 MIN_STAFF_REQUIRED = 3
-LEAVE_DB = "leave_data.csv"
-SWAP_DB = "swap_requests.csv"
 
-# --- DATA LOADERS (Self-Healing) ---
-def load_data(file, cols):
-    if os.path.exists(file):
-        df = pd.read_csv(file)
-        for col in cols:
-            if col not in df.columns: df[col] = "Pending"
-        return df[cols]
-    return pd.DataFrame(columns=cols)
+st.set_page_config(page_title="QA & Publishing Team Leave Manager", layout="wide")
 
-df_leave = load_data(LEAVE_DB, ["Name", "Date", "Status"])
-df_swaps = load_data(SWAP_DB, ["Requester", "Date_To_Give", "Date_Wanted", "Status"])
+# --- GOOGLE SHEETS CONNECTION ---
+# This looks for secrets in your Streamlit Cloud settings
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# Helper to fetch data safely
+def get_all_data():
+    # ttl=0 ensures we don't show old cached data
+    df_l = conn.read(worksheet="Leaves", ttl=0)
+    df_s = conn.read(worksheet="Swaps", ttl=0)
+    return df_l, df_s
+
+df_leave, df_swaps = get_all_data()
 
 # --- SIDEBAR AUTH ---
 st.sidebar.title("🔐 Access Control")
@@ -28,16 +29,17 @@ access_mode = st.sidebar.selectbox("Select Mode", ["Team Member", "Manager/Admin
 authenticated = False
 if access_mode == "Manager/Admin":
     pwd = st.sidebar.text_input("Enter Admin Password", type="password")
-    if pwd == ADMIN_PASSWORD: authenticated = True
+    if pwd == ADMIN_PASSWORD: 
+        authenticated = True
 
 st.title("🛡️ QA & Publishing Team Leave Manager")
 
-# --- NEW: LIVE AVAILABILITY COUNTER ---
+# --- LIVE AVAILABILITY COUNTER ---
 st.header("📊 Real-Time Attendance Check")
 check_date = st.date_input("Select a date to check availability:", datetime.now())
 date_str = str(check_date)
 
-# Count only "Approved" leaves for that day
+# Count only "Approved" leaves
 absent_list = df_leave[(df_leave["Date"] == date_str) & (df_leave["Status"] == "Approved")]["Name"].tolist()
 present_count = len(TEAM_MEMBERS) - len(absent_list)
 
@@ -67,9 +69,13 @@ if access_mode == "Manager/Admin" and authenticated:
             col1, col2, col3 = st.columns([3, 1, 1])
             col1.write(f"**{row['Name']}** requested **{row['Date']}**")
             if col2.button("Approve ✅", key=f"lp_{idx}"):
-                df_leave.at[idx, "Status"] = "Approved"; df_leave.to_csv(LEAVE_DB, index=False); st.rerun()
+                df_leave.at[idx, "Status"] = "Approved"
+                conn.update(worksheet="Leaves", data=df_leave)
+                st.rerun()
             if col3.button("Deny ❌", key=f"ld_{idx}"):
-                df_leave = df_leave.drop(idx); df_leave.to_csv(LEAVE_DB, index=False); st.rerun()
+                df_leave = df_leave.drop(idx)
+                conn.update(worksheet="Leaves", data=df_leave)
+                st.rerun()
     
     # Approve Swaps
     pending_swaps = df_swaps[df_swaps["Status"] == "Awaiting Manager"]
@@ -81,9 +87,13 @@ if access_mode == "Manager/Admin" and authenticated:
                 # Update Leave Table: Remove old, add new
                 df_leave = df_leave[~((df_leave['Name'] == row['Requester']) & (df_leave['Date'] == row['Date_To_Give']))]
                 new_entry = pd.DataFrame([[row['Requester'], row['Date_Wanted'], "Approved"]], columns=["Name", "Date", "Status"])
-                df_leave = pd.concat([df_leave, new_entry])
+                df_leave = pd.concat([df_leave, new_entry], ignore_index=True)
                 df_swaps.at[idx, "Status"] = "Completed"
-                df_leave.to_csv(LEAVE_DB, index=False); df_swaps.to_csv(SWAP_DB, index=False); st.rerun()
+                
+                # Update both sheets
+                conn.update(worksheet="Leaves", data=df_leave)
+                conn.update(worksheet="Swaps", data=df_swaps)
+                st.rerun()
 
 # --- 2. TEAM MEMBER VIEW ---
 elif access_mode == "Team Member":
@@ -95,7 +105,9 @@ elif access_mode == "Team Member":
             if st.form_submit_button("Submit Request"):
                 new_row = pd.DataFrame([[u_name, str(u_date), "Pending Approval"]], columns=["Name", "Date", "Status"])
                 df_leave = pd.concat([df_leave, new_row], ignore_index=True)
-                df_leave.to_csv(LEAVE_DB, index=False); st.success("Sent to Manager!"); st.rerun()
+                conn.update(worksheet="Leaves", data=df_leave)
+                st.success("Sent to Manager!")
+                st.rerun()
 
     with t2:
         st.subheader("Post a Swap Request")
@@ -106,16 +118,21 @@ elif access_mode == "Team Member":
             if st.form_submit_button("Post to Market"):
                 new_s = pd.DataFrame([[s_name, str(s_give), str(s_want), "Pending"]], columns=["Requester", "Date_To_Give", "Date_Wanted", "Status"])
                 df_swaps = pd.concat([df_swaps, new_s], ignore_index=True)
-                df_swaps.to_csv(SWAP_DB, index=False); st.success("Swap posted!"); st.rerun()
+                conn.update(worksheet="Swaps", data=df_swaps)
+                st.success("Swap posted!")
+                st.rerun()
         
         st.divider()
         st.subheader("Open Swaps")
         for idx, row in df_swaps[df_swaps["Status"] == "Pending"].iterrows():
             if st.button(f"Accept: {row['Requester']} ({row['Date_To_Give']} ↔️ {row['Date_Wanted']})", key=f"s_{idx}"):
                 df_swaps.at[idx, "Status"] = "Awaiting Manager"
-                df_swaps.to_csv(SWAP_DB, index=False); st.info("Accepted! Manager must now finalize."); st.rerun()
+                conn.update(worksheet="Swaps", data=df_swaps)
+                st.info("Accepted! Manager must now finalize.")
+                st.rerun()
 
 # --- 3. PUBLIC VIEW ---
 st.divider()
 st.subheader("📅 Approved Team Leave List")
-st.dataframe(df_leave[df_leave["Status"] == "Approved"].sort_values("Date"), use_container_width=True)
+if not df_leave.empty:
+    st.dataframe(df_leave[df_leave["Status"] == "Approved"].sort_values("Date"), use_container_width=True)
