@@ -8,9 +8,9 @@ ADMIN_PASSWORD = "abc123"
 TEAM_MEMBERS = ["Haris", "Anosh", "Hassaan", "Somma", "Ifrah", "Nadia", "Faizan"]
 MIN_STAFF_REQUIRED = 3
 
-# 🚨 PASTE YOUR LINKS HERE
+# 🚨 PASTE YOUR UPDATED LINKS HERE
 SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR7iiQmtnEj3GVbT1IhajMd3bndS1S9_HTrCn1cwqF9ZefnUwnvSX3WyBRSEdSGwtUTpqy1TRpTe3n8/pub?output=csv"
-SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyNdpfKKPcHtGKLddWl1GvaFwLgw09ujDZrRBoVWhm2h8Us9cpEoQ7a3QQ7x9-QJP4/exec"
+SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz11sgcmRRm55GWQYxU26BTkORTgeegLguJeNEsBgWu9ZNLAc9DUlsqhFg0s9MTr1C2/exec"
 
 st.set_page_config(page_title="QA & Publishing Leave Manager", layout="wide")
 
@@ -34,69 +34,74 @@ if access_mode == "Manager/Admin":
     if st.sidebar.text_input("Admin Password", type="password") == ADMIN_PASSWORD:
         authenticated = True
 
-# --- 1. TEAM MEMBER VIEW (The Request Form) ---
+# --- 1. TEAM MEMBER VIEW ---
 if access_mode == "Team Member":
-    st.header("📝 Submit Leave Request")
-    with st.form("request_form", clear_on_submit=True):
-        u_name = st.selectbox("Your Name", TEAM_MEMBERS)
-        u_date = st.date_input("Date Requested", datetime.now())
+    tab1, tab2 = st.tabs(["📝 Request Leave", "🔄 Swap Marketplace"])
+    
+    with tab1:
+        st.header("Submit Leave Request")
+        with st.form("request_form", clear_on_submit=True):
+            u_name = st.selectbox("Your Name", TEAM_MEMBERS)
+            u_date = st.date_input("Date Requested", datetime.now())
+            if st.form_submit_button("Submit to Manager"):
+                payload = {"name": u_name, "date": str(u_date), "action": "add"}
+                requests.post(SCRIPT_URL, json=payload)
+                st.success("Sent to Manager!")
+                st.cache_data.clear()
+
+    with tab2:
+        st.header("Swap Your Approved Leave")
+        st.info("To swap, select an approved leave you ALREADY have and the new date you want instead.")
         
-        if st.form_submit_button("Submit to Sheet"):
-            payload = {
-                "name": u_name,
-                "date": str(u_date),
-                "status": "Pending Approval",
-                "action": "add"
-            }
-            try:
-                response = requests.post(SCRIPT_URL, json=payload)
-                if response.status_code == 200:
-                    st.success(f"✅ Success! Request for {u_name} on {u_date} has been logged.")
-                    st.balloons()
-                    st.cache_data.clear() # Clear cache to show new data
-                else:
-                    st.error("Submission failed.")
-            except Exception as e:
-                st.error(f"Error: {e}")
+        # Only show leaves that are actually approved for the user
+        my_name = st.selectbox("Who are you?", TEAM_MEMBERS, key="swap_name")
+        my_approved = df_leave[(df_leave["Name"] == my_name) & (df_leave["Status"] == "Approved")]
+        
+        if not my_approved.empty:
+            with st.form("swap_form"):
+                old_date = st.selectbox("Select Leave to Give Up", my_approved["Date"].tolist())
+                new_date = st.date_input("Select New Date You Want")
+                if st.form_submit_button("Request Swap"):
+                    # For a direct swap through tool, we send to script to replace row
+                    payload = {
+                        "name": my_name,
+                        "old_date": str(old_date),
+                        "new_date": str(new_date),
+                        "action": "swap"
+                    }
+                    requests.post(SCRIPT_URL, json=payload)
+                    st.success("Swap processed! Your calendar has been updated.")
+                    st.cache_data.clear()
+        else:
+            st.warning("You don't have any approved leaves to swap yet.")
 
 # --- 2. MANAGER APPROVAL VIEW ---
 if authenticated:
     st.divider()
     st.header("🔑 Manager Approval Queue")
-    
     pending_df = df_leave[df_leave["Status"] == "Pending Approval"]
     
     if not pending_df.empty:
         for index, row in pending_df.iterrows():
-            col_name, col_date, col_btn = st.columns([2, 2, 1])
-            col_name.write(f"👤 {row['Name']}")
-            col_date.write(f"📅 {row['Date']}")
-            
-            if col_btn.button("Approve ✅", key=f"btn_{index}"):
-                approval_payload = {
-                    "name": row['Name'],
-                    "date": row['Date'],
-                    "action": "approve"
-                }
-                with st.spinner("Updating Sheet..."):
-                    res = requests.post(SCRIPT_URL, json=approval_payload)
-                    if res.status_code == 200:
-                        st.success(f"Approved {row['Name']}")
-                        st.cache_data.clear() # Force refresh
-                        st.rerun()
-                    else:
-                        st.error("Approval failed.")
+            c1, c2, c3 = st.columns([2, 2, 1])
+            c1.write(f"👤 {row['Name']}")
+            c2.write(f"📅 {row['Date']}")
+            if c3.button("Approve ✅", key=f"app_{index}"):
+                payload = {"name": row['Name'], "date": row['Date'], "action": "approve"}
+                requests.post(SCRIPT_URL, json=payload)
+                st.success(f"Approved {row['Name']}")
+                st.cache_data.clear()
+                st.rerun()
     else:
-        st.info("No pending requests to approve.")
+        st.info("No pending requests.")
 
 # --- 3. ATTENDANCE CHECK & CALENDAR ---
 st.divider()
 st.header("📊 Real-Time Coverage")
 
-check_date = st.date_input("Check staffing for:", datetime.now())
+check_date = st.date_input("Check staffing for:", datetime.now(), key="check_date")
 date_str = str(check_date)
 
-# Fix for potential data type mismatch in CSV dates
 df_leave['Date'] = df_leave['Date'].astype(str)
 absent_list = df_leave[(df_leave["Date"] == date_str) & (df_leave["Status"] == "Approved")]["Name"].tolist()
 present_count = len(TEAM_MEMBERS) - len(absent_list)
